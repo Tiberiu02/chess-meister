@@ -36,6 +36,7 @@ Here are some of the features:
 
 ## Demo
 An interactive demo in available here: [tiberiu.info/chess](http://tiberiu.info/chess)  
+
 _Please note that the demo is not made to be used by more than one user at a time, so your table may be replaced by the one of another player at any time. Sorry!_
 
 ## To do
