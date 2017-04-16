@@ -706,28 +706,14 @@ int main()
     }
     fin.close();
 
-    vector<Move> layer;
-    vector<Table> aux;
-
-    for ( int i = 0; i < aux.size(); i ++ ) {
-        Table &m = aux[i];
-
-        if ( m.isCheck() )
-            continue;
-
-        layer.push_back( Move( m.eval(), m ) );
-    }
-
-    sort( layer.begin(), layer.begin() + layer.size() );
-
-    cout << "Depth 1 done" << endl;
+    Move best_move( 0, Table() );
 
     int d = 0;
     while ( d < Depth ) {
         int alpha = -100000000;
         int beta = 100000000;
 
-        vector<Move> new_layer;
+        vector<Move> layer;
         vector<Table> aux = t.next_move();
 
         for ( int i = 0; i < aux.size(); i ++ ) {
@@ -739,21 +725,22 @@ int main()
             m.toggle();
 
             int f = -negamax( d, m, -beta, -alpha );
-            if ( f > alpha && d < beta )
+            if ( f > alpha )
                 alpha = f;
 
-            new_layer.push_back( Move( f, m ) );
+            layer.push_back( Move( f, m ) );
         }
 
-        layer = new_layer;
-        stable_sort( layer.begin(), layer.begin() + layer.size() );
+        best_move = layer[0];
+        for ( int i = 1; i < layer.size(); i ++ )
+            if ( layer[i] < best_move )
+                best_move = layer[i];
 
-
-        cout << "Depth " << ++ d << " done in " << clock() / 1000.0 << " : " << layer[0].score << endl;
+        cout << "Depth " << ++ d << " done in " << clock() / 1000.0 << " : " << best_move.score << endl;
     }
 
     ofstream fout( "table.out" );
-    print_table( layer[0].t, fout );
+    print_table( best_move.t, fout );
     fout.close();
 
     return 0;
