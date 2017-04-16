@@ -42,4 +42,4 @@ _Please note that the demo is not made to be used by more than one user at a tim
 ## To do
 Any contributions are welcome. Here are a few _to do_'s:
 - implement castling
-- make a entirely javascript version to run in the browser
+- ~~make an entirely javascript version to run in the browser~~ tried and it was 1000 times slower
