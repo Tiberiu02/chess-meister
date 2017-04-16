@@ -1,28 +1,3 @@
-<?php
-	$log = '../traffic.log';
-	
-	date_default_timezone_set("Europe/Bucharest");
-	$time = date("d-m-y h:i:sa");
-	
-	if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
-		$ip = $_SERVER['HTTP_CLIENT_IP'];
-	} elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-		$ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
-	} else {
-		$ip = $_SERVER['REMOTE_ADDR'];
-	}
-	
-	$details = file_get_contents("http://ipinfo.io/" . $ip . "/json");
-	$details = rtrim($details, "\0");
-	$details = stripslashes(html_entity_decode($details));
-	$details = json_decode($details, true);
-	$location = $details["country"] . "/" . $details["region"] . "/" . $details["city"];
-	
-	$url = $_SERVER['HTTP_HOST'].$_SERVER['PHP_SELF'];
-	
-	$text = $time . " " . $ip . " " . $location . " " . $url . "\n";
-	file_put_contents($log, $text, FILE_APPEND);
-?>
 <html>
 <head>
 <meta charset="UTF-8"> 
