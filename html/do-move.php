@@ -6,7 +6,7 @@ if(isset($_GET["table"])) {
 	fwrite($input, $table);
 	fclose($input);
 	
-	exec("./chess");
+	$s = shell_exec("./chess");
 	
 	$output = fopen("table.out", "r") or die("Unable to open output file!");
 	$result = fread($output,filesize("table.out"));
