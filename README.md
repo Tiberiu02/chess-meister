@@ -35,7 +35,7 @@ Here are some of the features:
 - positional score
 
 ## Demo
-An interactive demo in available here: [tiberiu.info/chess](http://tiberiu.info/chess)  
+There is no available online demo, but you are free to download the project and host it on your own if the php command `shell_exec()` is working on your machine. Please tell me if you did, so you will be listed here.
 
 _Please note that the demo is not made to be used by more than one user at a time, so your table may be replaced by the one of another player at any time. Sorry!_
 
