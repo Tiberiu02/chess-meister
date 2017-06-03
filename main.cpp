@@ -12,588 +12,577 @@ using namespace std;
 
 /// ********** CONFIG **********
 
-# define my_color Table::Black
-# define Depth 7
+# define my_color Black
+# define Depth 9
 
 /// ****************************
 
-class Table
-{
-public:
-    Table( void );
-
-    inline int slot( int x, int y ) const;
-    inline void pop( int x, int y );
-    inline void push( int val, int x, int y );
-    inline void toggle( void );
-    inline int eval( void ) const;
-    vector<Table> next_move( void ) const;
-    bool isCheck( void ) const;
-    bool isCheckMate( void ) const;
-
-    bool to_move;
-
-    static const int Free = 0;
-    static const int Pawn = 1;
-    static const int Knight = 2;
-    static const int Bishop = 3;
-    static const int Rook = 4;
-    static const int Queen = 5;
-    static const int King = 6;
-
-    static const int White = 0;
-    static const int Black = 1;
-
-    static const int won = 100000;
-    static const int lost = -100000;
-    static const int draw = 0;
-
-    unsigned int t[8];
-
-    int score[2];
-    bool king[2];
-
-    static const int Futility = 300;
-    static const int DeepFutility = 500;
-
-private:
-    inline void set_slot( int val, int x, int y );
-
-    short king_x[2];
-    short king_y[2];
-
-    static const int knight_dx[];
-    static const int knight_dy[];
-
-    static const int line_dx[];
-    static const int line_dy[];
-
-    void move_pawn( int x, int y, vector<Table> &v ) const;
-    void move_piece( int x, int y, const int* p_dx, const int* p_dy, int n, bool mul, vector<Table> &v ) const;
-
-    static const int bonus[8][64];
-    static const int value[7];
+struct Table {
+	bool to_move;
+	unsigned int t[8];
+	int score;
+	int king_x[2], king_y[2];
 };
 
-Table::Table( void )
-{
-    to_move = 0;
-    memset( t, 0, 32 );
-    king[0] = king[1] = 0;
-    score[0] = score[1] = 0;
-}
+static const int Free = 0;
+static const int Pawn = 1;
+static const int Knight = 2;
+static const int Bishop = 3;
+static const int Rook = 4;
+static const int Queen = 5;
+static const int King = 6;
 
-inline void Table::toggle( void )
-{
-    to_move ^= 1;
-}
+static const int White = 0;
+static const int Black = 1;
 
-inline int Table::slot( int x, int y ) const
-{
-    return t[x] >> ( y << 2 ) & 15;
-}
+static const int won = 100000;
+static const int lost = -100000;
+static const int draw = 0;
 
-inline void Table::set_slot( int val, int x, int y )
-{
-    t[x] ^= ( slot( x, y ) ^ val ) << ( y << 2 );
-}
+static const int Futility = 900;
+static const int DeepFutility = 1500;
 
-const int Table::bonus[8][64] =
+static inline Table new_table();
+static inline void toggle( Table& a );
+static inline int slot( const Table& a, int x, int y );
+static inline void set_slot( Table& a, int val, int x, int y );
+static inline void pop( Table& a, int x, int y );
+static inline void push( Table& a, int val, int x, int y );
+static inline int eval( const Table& a );
+static inline bool isCheckMate( const Table& a );
+static inline bool isCheck( const Table& a );
+static inline vector<Table> next_move( const Table& a );
+static inline void move_piece( const Table& a, int x, int y, const int* p_dx, const int* p_dy, int n, bool mul, vector<Table> &v );
+static inline void move_pawn( const Table& a, int x, int y, vector<Table> &v );
+
+static const int bonus[8][64] =
 {
-    {
-      0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0
-    },
-    { /// Pawn
-         0,  0,  0,  0,  0,  0,  0,  0,
-        50, 50, 50, 50, 50, 50, 50, 50,
-        10, 10, 20, 30, 30, 20, 10, 10,
-         5,  5, 10, 25, 25, 10,  5,  5,
-         0,  0,  0, 20, 20,  0,  0,  0,
-         5, -5,-10,  0,  0,-10, -5,  5,
-         5, 10, 10,-20,-20, 10, 10,  5,
-         0,  0,  0,  0,  0,  0,  0,  0
-    },
-    { /// Knight
-        -50,-40,-30,-30,-30,-30,-40,-50,
-        -40,-20,  0,  0,  0,  0,-20,-40,
-        -30,  0, 10, 15, 15, 10,  0,-30,
-        -30,  5, 15, 20, 20, 15,  5,-30,
-        -30,  0, 15, 20, 20, 15,  0,-30,
-        -30,  5, 10, 15, 15, 10,  5,-30,
-        -40,-20,  0,  5,  5,  0,-20,-40,
-        -50,-40,-30,-30,-30,-30,-40,-50
-    },
-    { /// Bishop
-        -20,-10,-10,-10,-10,-10,-10,-20,
-        -10,  0,  0,  0,  0,  0,  0,-10,
-        -10,  0,  5, 10, 10,  5,  0,-10,
-        -10,  5,  5, 10, 10,  5,  5,-10,
-        -10,  0, 10, 10, 10, 10,  0,-10,
-        -10, 10, 10, 10, 10, 10, 10,-10,
-        -10,  5,  0,  0,  0,  0,  5,-10,
-        -20,-10,-10,-10,-10,-10,-10,-20
-    },
-    { /// Rooks
-          0,  0,  0,  0,  0,  0,  0,  0,
-          5, 10, 10, 10, 10, 10, 10,  5,
-         -5,  0,  0,  0,  0,  0,  0, -5,
-         -5,  0,  0,  0,  0,  0,  0, -5,
-         -5,  0,  0,  0,  0,  0,  0, -5,
-         -5,  0,  0,  0,  0,  0,  0, -5,
-         -5,  0,  0,  0,  0,  0,  0, -5,
-          0,  0,  0,  5,  5,  0,  0,  0
-    },
-    { /// Queen
-        -20,-10,-10, -5, -5,-10,-10,-20,
-        -10,  0,  0,  0,  0,  0,  0,-10,
-        -10,  0,  5,  5,  5,  5,  0,-10,
-         -5,  0,  5,  5,  5,  5,  0, -5,
-          0,  0,  5,  5,  5,  5,  0, -5,
-        -10,  5,  5,  5,  5,  5,  0,-10,
-        -10,  0,  5,  0,  0,  0,  0,-10,
-        -20,-10,-10, -5, -5,-10,-10,-20
-    },
-    { /// King middle game
-        -30,-40,-40,-50,-50,-40,-40,-30,
-        -30,-40,-40,-50,-50,-40,-40,-30,
-        -30,-40,-40,-50,-50,-40,-40,-30,
-        -30,-40,-40,-50,-50,-40,-40,-30,
-        -20,-30,-30,-40,-40,-30,-30,-20,
-        -10,-20,-20,-20,-20,-20,-20,-10,
-         20, 20,  0,  0,  0,  0, 20, 20,
-         20, 30, 10,  0,  0, 10, 30, 20
-    },
-    { /// King end game
-        -50,-40,-30,-20,-20,-30,-40,-50,
-        -30,-20,-10,  0,  0,-10,-20,-30,
-        -30,-10, 20, 30, 30, 20,-10,-30,
-        -30,-10, 30, 40, 40, 30,-10,-30,
-        -30,-10, 30, 40, 40, 30,-10,-30,
-        -30,-10, 20, 30, 30, 20,-10,-30,
-        -30,-30,  0,  0,  0,  0,-30,-30,
-        -50,-30,-30,-30,-30,-30,-30,-50
-    }
+	{
+  	0, 0, 0, 0, 0, 0, 0, 0,
+  	0, 0, 0, 0, 0, 0, 0, 0,
+  	0, 0, 0, 0, 0, 0, 0, 0,
+  	0, 0, 0, 0, 0, 0, 0, 0,
+  	0, 0, 0, 0, 0, 0, 0, 0,
+  	0, 0, 0, 0, 0, 0, 0, 0,
+  	0, 0, 0, 0, 0, 0, 0, 0,
+  	0, 0, 0, 0, 0, 0, 0, 0
+	},
+	{ /// Pawn
+        0,  0,  0,  0,  0,  0,  0,  0,
+      500,500,500,500,500,500,500,500,
+      110,110,120,130,130,120,110,110,
+       25, 25, 30, 45, 45, 30, 25, 25,
+        0,  0,  0, 20, 20,  0,  0,  0,
+        5, -5,-10,  0,  0,-10, -5,  5,
+        5, 10, 10,-20,-20, 10, 10,  5,
+        0,  0,  0,  0,  0,  0,  0,  0
+	},
+	{ /// Knight
+    	-50,-40,-30,-30,-30,-30,-40,-50,
+    	-40,-20,  0,  0,  0,  0,-20,-40,
+    	-30,  0, 10, 15, 15, 10,  0,-30,
+    	-30,  5, 15, 20, 20, 15,  5,-30,
+    	-30,  0, 15, 20, 20, 15,  0,-30,
+    	-30,  5, 10, 15, 15, 10,  5,-30,
+    	-40,-20,  0,  5,  5,  0,-20,-40,
+    	-50,-40,-30,-30,-30,-30,-40,-50
+	},
+	{ /// Bishop
+    	-20,-10,-10,-10,-10,-10,-10,-20,
+    	-10,  0,  0,  0,  0,  0,  0,-10,
+    	-10,  0,  5, 10, 10,  5,  0,-10,
+    	-10,  5,  5, 10, 10,  5,  5,-10,
+    	-10,  0, 10, 10, 10, 10,  0,-10,
+    	-10, 10, 10, 10, 10, 10, 10,-10,
+    	-10,  5,  0,  0,  0,  0,  5,-10,
+    	-20,-10,-10,-10,-10,-10,-10,-20
+	},
+	{ /// Rooks
+      	0,  0,  0,  0,  0,  0,  0,  0,
+      	5, 10, 10, 10, 10, 10, 10,  5,
+     	-5,  0,  0,  0,  0,  0,  0, -5,
+     	-5,  0,  0,  0,  0,  0,  0, -5,
+     	-5,  0,  0,  0,  0,  0,  0, -5,
+     	-5,  0,  0,  0,  0,  0,  0, -5,
+     	-5,  0,  0,  0,  0,  0,  0, -5,
+      	0,  0,  0,  5,  5,  0,  0,  0
+	},
+	{ /// Queen
+    	-20,-10,-10, -5, -5,-10,-10,-20,
+    	-10,  0,  0,  0,  0,  0,  0,-10,
+    	-10,  0,  5,  5,  5,  5,  0,-10,
+     	-5,  0,  5,  5,  5,  5,  0, -5,
+      	0,  0,  5,  5,  5,  5,  0, -5,
+    	-10,  5,  5,  5,  5,  5,  0,-10,
+    	-10,  0,  5,  0,  0,  0,  0,-10,
+    	-20,-10,-10, -5, -5,-10,-10,-20
+	},
+	{ /// King middle game
+    	-30,-40,-40,-50,-50,-40,-40,-30,
+    	-30,-40,-40,-50,-50,-40,-40,-30,
+    	-30,-40,-40,-50,-50,-40,-40,-30,
+    	-30,-40,-40,-50,-50,-40,-40,-30,
+    	-20,-30,-30,-40,-40,-30,-30,-20,
+    	-10,-20,-20,-20,-20,-20,-20,-10,
+     	20, 20,  0,  0,  0,  0, 20, 20,
+     	20, 30, 10,  0,  0, 10, 30, 20
+	},
+	{ /// King end game
+    	-50,-40,-30,-20,-20,-30,-40,-50,
+    	-30,-20,-10,  0,  0,-10,-20,-30,
+    	-30,-10, 20, 30, 30, 20,-10,-30,
+    	-30,-10, 30, 40, 40, 30,-10,-30,
+    	-30,-10, 30, 40, 40, 30,-10,-30,
+    	-30,-10, 20, 30, 30, 20,-10,-30,
+    	-30,-30,  0,  0,  0,  0,-30,-30,
+    	-50,-30,-30,-30,-30,-30,-30,-50
+	}
 };
-const int Table::value[7] = { 0, 100, 320, 330, 500, 900, 20000 };
+static const int value[7] = { 0, 100, 320, 330, 500, 900, 20000 };
 
-int rvs[2][8] = { { 0, 1, 2, 3, 4, 5, 6, 7 }, { 7, 6, 5, 4, 3, 2, 1, 0 } };
-inline int Table::eval( void ) const
+static inline Table new_table()
 {
-    return to_move == 0 ? score[0] - score[1] : score[1] - score[0];
+	Table a;
+
+	a.to_move = 0;
+	memset( a.t, 0, 32 );
+	a.score = 0;
+
+	return a;
 }
 
-inline bool Table::isCheckMate() const
+static inline void toggle( Table& a )
 {
-    if ( !isCheck() )
-        return false;
-
-    vector<Table> aux = next_move();
-
-    int i;
-    for ( i = 0; i < aux.size(); i ++ ) {
-        Table &m = aux[i];
-        m.toggle();
-
-        if ( !m.isCheck() )
-            return false;
-    }
-
-    if ( i == aux.size() )
-        return true;
+	a.to_move ^= 1;
+	a.score *= -1;
 }
 
-inline void Table::pop( int x, int y )
+static inline int slot( const Table& a, int x, int y )
 {
-    int t = slot( x, y );
-
-    if ( t == Free )
-        return;
-
-    int p = ( t >> 1 );
-    int c = ( t & 1 );
-
-    if ( p == King )
-        king[c] = 0;
-
-    score[c] -= value[p] + bonus[p][( rvs[c][x] << 3 ) + y];
-
-    set_slot( Free, x, y );
+	return a.t[x] >> ( y << 2 ) & 15;
 }
 
-inline void Table::push( int val, int x, int y )
+static inline void set_slot( Table& a, int val, int x, int y )
 {
-    if ( slot( x, y ) != Free )
-        pop( x, y );
-
-    if ( val == 0 )
-        return;
-
-    int p = ( val >> 1 );
-    int c = ( val & 1 );
-
-    if ( p == King ) {
-        king[c] = 1;
-        king_x[c] = x;
-        king_y[c] = y;
-    }
-
-    score[c] += value[p] + bonus[p][( rvs[c][x] << 3 ) + y];
-
-    set_slot( val, x, y );
+	a.t[x] ^= ( slot( a, x, y ) ^ val ) << ( y << 2 );
 }
 
-inline vector<Table> Table::next_move( void ) const
+# define rvs( a, b ) ( a == 0 ? b : 7 - b )
+static inline int eval( const Table& a )
 {
-    vector<Table> pos;
-
-    for ( int x = 0; x < 8; x ++ )
-        for ( int y = 0; y < 8; y ++ ) {
-            int p = slot( x, y );
-
-            if ( p % 2 == to_move ) {
-                switch ( p / 2 ) {
-                case Pawn:
-                    move_pawn( x, y, pos );
-                    break;
-
-                case Knight:
-                    move_piece( x, y, knight_dx, knight_dy, 4, 0, pos );
-                    break;
-
-                case Bishop:
-                    move_piece( x, y, line_dx, line_dy, 4, 1, pos );
-                    break;
-
-                case Rook:
-                    move_piece( x, y, line_dx + 4, line_dy + 4, 4, 1, pos );
-                    break;
-
-                case Queen:
-                    move_piece( x, y, line_dx, line_dy, 8, 1, pos );
-                    break;
-
-                case King:
-                    move_piece( x, y, line_dx, line_dy, 8, 0, pos );
-                    break;
-                }
-            }
-        }
-
-    return pos;
+	return a.score;
 }
 
-const int Table::knight_dx[] = { -2, -1, 1, 2, 2, 1, -1, -2 };
-const int Table::knight_dy[] = { 1, 2, 2, 1, -1, -2, -2, -1 };
-
-const int Table::line_dx[] = { -1, 1, 1, -1, -1, 0, 1, 0 };
-const int Table::line_dy[] = { 1, 1, -1, -1, 0, 1, 0, -1 };
-void Table::move_piece( int x, int y, const int* p_dx, const int* p_dy, int n, bool mul, vector<Table> &v ) const
+static inline bool isCheckMate( const Table& a )
 {
-    const int p = slot( x, y );
+	if ( !isCheck( a ) )
+    	return false;
 
-    for ( int i = 0; i < n; i ++ ) {
-        const int &dx = p_dx[i];
-        const int &dy = p_dy[i];
+	vector<Table> aux = next_move( a );
 
-        int newX = x + dx;
-        int newY = y + dy;
+	int i;
+	for ( i = 0; i < aux.size(); i ++ ) {
+    	Table &m = aux[i];
+    	toggle( m );
 
-        if ( mul ) {
-            while ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
-            && slot( newX, newY ) == Free ) {
-                Table t = *this;
+    	if ( !isCheck( m ) )
+        	return false;
+	}
 
-                t.pop( x, y );
-                t.push( p, newX, newY );
-                t.toggle();
-
-                v.push_back( t );
-
-                newX += dx;
-                newY += dy;
-            }
-
-            if ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
-            && ( slot( newX, newY ) & 1 ) != ( p & 1 ) ) {
-                Table t = *this;
-
-                t.pop( x, y );
-                t.push( p, newX, newY );
-                t.toggle();
-
-                v.push_back( t );
-            }
-        } else {
-            if ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
-            && ( slot( newX, newY ) == Free || ( slot( newX, newY ) & 1 ) != ( p & 1 ) ) ) {
-                Table t = *this;
-
-                t.pop( x, y );
-                t.push( p, newX, newY );
-                t.toggle();
-
-                v.push_back( t );
-            }
-        }
-    }
+    return true;
 }
 
-void Table::move_pawn( int x, int y, vector<Table> &v ) const
+static inline void pop( Table& a, int x, int y )
 {
-    int p = slot( x, y );
+	int t = slot( a, x, y );
 
-    int newX = x + ( ( p % 2 ) ? 1 : -1 );
-    int newP = ( ( newX == 0 || newX == 7 ) ? ( Queen * 2 + p % 2 ) : p );
+	if ( t == Free )
+    	return;
 
-    if ( slot( newX, y ) == Free ) {
-        Table t = *this;
+	int p = ( t >> 1 );
+	int c = ( t & 1 );
 
-        t.pop( x, y );
-        t.push( newP, newX, y );
-        t.toggle();
+    if ( c == a.to_move )
+        a.score -= value[p] + bonus[p][( rvs( c, x ) << 3 ) + y];
+    else
+        a.score += value[p] + bonus[p][( rvs( c, x ) << 3 ) + y];
 
-        v.push_back( t );
-    }
-
-    for ( int newY = y - 1; newY <= y + 1; newY += 2 )
-        if ( newY >= 0 && newY < 8
-        && slot( newX, newY ) != Free
-        && slot( newX, newY ) % 2 != newP % 2 ) {
-            Table t = *this;
-
-            t.pop( x, y );
-            t.pop( newX, newY );
-            t.push( newP, newX, newY );
-            t.toggle();
-
-            v.push_back( t );
-        }
+	set_slot( a, Free, x, y );
 }
 
-bool Table::isCheck( void ) const
+static inline void push( Table& a, int val, int x, int y )
 {
-    int x = king_x[to_move];
-    int y = king_y[to_move];
+	if ( slot( a, x, y ) != Free )
+    	pop( a, x, y );
 
-    for ( int i = 0; i < 8; i ++ ) {
-        int newX = x + knight_dx[i];
-        int newY = y + knight_dy[i];
+	if ( val == 0 )
+    	return;
 
-        if ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
-        && ( ( slot( newX, newY ) >> 1 ) == Knight && ( slot( newX, newY ) & 1 ) != to_move ) )
-            return true;
-    }
+	int p = ( val >> 1 );
+	int c = ( val & 1 );
 
-    for ( int i = 0; i < 4; i ++ ) {
-        const int &dx = line_dx[4 + i];
-        const int &dy = line_dy[4 + i];
+	if ( p == King ) {
+    	a.king_x[c] = x;
+    	a.king_y[c] = y;
+	}
 
-        int newX = x + dx;
-        int newY = y + dy;
+    if ( c == a.to_move )
+        a.score += value[p] + bonus[p][( rvs( c, x ) << 3 ) + y];
+    else
+        a.score -= value[p] + bonus[p][( rvs( c, x ) << 3 ) + y];
 
-        while ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
-        && slot( newX, newY ) == Free ) {
-            newX += dx;
-            newY += dy;
-        }
+	set_slot( a, val, x, y );
+}
 
-        if ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
-        && ( slot( newX, newY ) & 1 ) != to_move
-        && ( ( slot( newX, newY ) >> 1 ) == Rook || ( slot( newX, newY ) >> 1 ) == Queen ) ) {
-            return true;
-        }
-    }
 
-    for ( int i = 0; i < 4; i ++ ) {
-        const int &dx = line_dx[i];
-        const int &dy = line_dy[i];
+static const int knight_dx[] = { -2, -1, 1, 2, 2, 1, -1, -2 };
+static const int knight_dy[] = { 1, 2, 2, 1, -1, -2, -2, -1 };
 
-        int newX = x + dx;
-        int newY = y + dy;
+static const int line_dx[] = { -1, 1, 1, -1, -1, 0, 1, 0 };
+static const int line_dy[] = { 1, 1, -1, -1, 0, 1, 0, -1 };
+static inline vector<Table> next_move( const Table& a )
+{
+	vector<Table> pos;
 
-        while ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
-        && slot( newX, newY ) == Free ) {
-            newX += dx;
-            newY += dy;
-        }
+	for ( int x = 0; x < 8; x ++ )
+    	for ( int y = 0; y < 8; y ++ ) {
+        	int p = slot( a, x, y );
 
-        if ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
-        && ( slot( newX, newY ) & 1 ) != to_move
-        && ( ( slot( newX, newY ) >> 1 ) == Bishop || ( slot( newX, newY ) >> 1 ) == Queen ) ) {
-            return true;
-        }
-    }
+        	if ( p % 2 == a.to_move ) {
+            	switch ( p / 2 ) {
+            	case Pawn:
+                	move_pawn( a, x, y, pos );
+                	break;
 
-    return false;
+            	case Knight:
+                	move_piece( a, x, y, knight_dx, knight_dy, 4, 0, pos );
+                	break;
+
+            	case Bishop:
+                	move_piece( a, x, y, line_dx, line_dy, 4, 1, pos );
+                	break;
+
+            	case Rook:
+                	move_piece( a, x, y, line_dx + 4, line_dy + 4, 4, 1, pos );
+                	break;
+
+            	case Queen:
+                	move_piece( a, x, y, line_dx, line_dy, 8, 1, pos );
+                	break;
+
+            	case King:
+                	move_piece( a, x, y, line_dx, line_dy, 8, 0, pos );
+                	break;
+            	}
+        	}
+    	}
+
+	return pos;
+}
+static inline void move_piece( const Table& a, int x, int y, const int* p_dx, const int* p_dy, int n, bool mul, vector<Table> &v )
+{
+	const int p = slot( a, x, y );
+
+	for ( int i = 0; i < n; i ++ ) {
+    	const int &dx = p_dx[i];
+    	const int &dy = p_dy[i];
+
+    	int newX = x + dx;
+    	int newY = y + dy;
+
+    	if ( mul ) {
+        	while ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
+        	&& slot( a, newX, newY ) == Free ) {
+            	Table t = a;
+
+            	pop( t, x, y );
+            	push( t, p, newX, newY );
+            	toggle( t );
+
+            	v.push_back( t );
+
+            	newX += dx;
+            	newY += dy;
+        	}
+
+        	if ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
+        	&& ( slot( a, newX, newY ) & 1 ) != ( p & 1 ) ) {
+            	Table t = a;
+
+            	pop( t, x, y );
+            	push( t, p, newX, newY );
+            	toggle( t );
+
+            	v.push_back( t );
+        	}
+    	} else {
+        	if ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
+        	&& ( slot( a, newX, newY ) == Free || ( slot( a, newX, newY ) & 1 ) != ( p & 1 ) ) ) {
+            	Table t = a;
+
+            	pop( t, x, y );
+            	push( t, p, newX, newY );
+            	toggle( t );
+
+            	v.push_back( t );
+        	}
+    	}
+	}
+}
+
+static inline void move_pawn( const Table& a, int x, int y, vector<Table> &v )
+{
+	int p = slot( a, x, y );
+
+	int newX = x + ( ( p % 2 ) ? 1 : -1 );
+	int newP = ( ( newX == 0 || newX == 7 ) ? ( Queen * 2 + p % 2 ) : p );
+
+	if ( slot( a, newX, y ) == Free ) {
+    	Table t = a;
+
+    	pop( t, x, y );
+    	push( t, newP, newX, y );
+    	toggle( t );
+
+    	v.push_back( t );
+	}
+
+	for ( int newY = y - 1; newY <= y + 1; newY += 2 )
+    	if ( newY >= 0 && newY < 8
+    	&& slot( a, newX, newY ) != Free
+    	&& slot( a, newX, newY ) % 2 != newP % 2 ) {
+        	Table t = a;
+
+        	pop( t, x, y );
+        	push( t, newP, newX, newY );
+        	toggle( t );
+
+        	v.push_back( t );
+    	}
+}
+
+static inline bool isCheck( const Table& a )
+{
+	int x = a.king_x[a.to_move];
+	int y = a.king_y[a.to_move];
+
+	for ( int i = 0; i < 8; i ++ ) {
+    	int newX = x + knight_dx[i];
+    	int newY = y + knight_dy[i];
+
+    	if ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
+    	&& ( slot( a, newX, newY ) == Knight * 2 + !a.to_move ) )
+        	return true;
+	}
+
+	for ( int i = 0; i < 4; i ++ ) {
+    	const int &dx = line_dx[4 + i];
+    	const int &dy = line_dy[4 + i];
+
+    	int newX = x + dx;
+    	int newY = y + dy;
+
+    	while ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
+    	&& slot( a, newX, newY ) == Free ) {
+        	newX += dx;
+        	newY += dy;
+    	}
+
+    	if ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
+    	&& ( slot( a, newX, newY ) == Rook * 2 + !a.to_move || slot( a, newX, newY ) == Queen * 2 + !a.to_move ) ) {
+        	return true;
+    	}
+	}
+
+	for ( int i = 0; i < 4; i ++ ) {
+    	const int &dx = line_dx[i];
+    	const int &dy = line_dy[i];
+
+    	int newX = x + dx;
+    	int newY = y + dy;
+
+    	while ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
+    	&& slot( a, newX, newY ) == Free ) {
+        	newX += dx;
+        	newY += dy;
+    	}
+
+    	if ( 0 <= newX && newX < 8 && 0 <= newY && newY < 8
+    	&& ( slot( a, newX, newY ) == Bishop * 2 + !a.to_move || slot( a, newX, newY ) == Queen * 2 + !a.to_move ) ) {
+        	return true;
+    	}
+	}
+
+	return false;
 }
 
 struct Move
 {
-    int score;
-    Table t;
+	int score;
+	Table t;
 
-    Move( int a, Table b ) { score = a; t = b; }
-    bool operator<( const Move b ) { return this->score > b.score; }
-    bool operator<( Move b ) const { return this->score > b.score; }
+	Move( int a, Table b ) { score = a; t = b; }
+	inline bool operator<( const Move& b ) const { return this->score > b.score; }
 };
 
-int negamax( int d, Table &t, int alpha, int beta )
+inline bool cmp_table( const Table& a, const Table& b )
 {
-    if ( t.isCheckMate() )
-        return Table::lost - d;
+    return a.score < b.score;
+}
 
-    if ( d == 0 )
-        return t.eval();
-    else if ( d == 1 ) {
-        /// Futility Pruning
-        if ( !t.isCheck() && t.eval() + Table::Futility <= alpha )
-            return alpha;
+static inline int negamax( int d, Table &t, int alpha, int beta )
+{
+	if ( isCheckMate( t ) )
+    	return lost - d;
 
-        bool any_valid_move = false;
-        vector<Table> aux = t.next_move();
+	if ( d == 0 )
+    	return eval( t );
+	else if ( d == 1 ) {
+    	/// Futility Pruning
+    	if ( !isCheck( t ) && eval( t ) + Futility <= alpha )
+        	return alpha;
 
-        for ( int i = 0; i < aux.size(); i ++ ) {
-            Table &m = aux[i];
+    	bool any_valid_move = false;
+    	vector<Table> aux = next_move( t );
 
-            m.toggle();
-            if ( m.isCheck() )
-                continue;
-            m.toggle();
+    	for ( int i = 0; i < aux.size(); i ++ ) {
+        	Table &m = aux[i];
 
-            any_valid_move = true;
-            alpha = max( alpha, -negamax( 0, m, alpha, beta ) );
-            if ( beta <= alpha )
-                return alpha;
-        }
+        	toggle( m );
+        	if ( isCheck( m ) )
+            	continue;
+        	toggle( m );
 
-        t.toggle();
-        if ( !any_valid_move )
-            return Table::draw;
+        	any_valid_move = true;
+        	alpha = max( alpha, -negamax( 0, m, alpha, beta ) );
+        	if ( beta <= alpha )
+            	return alpha;
+    	}
 
-        return alpha;
-    } else {
-        /// Deep Futility Pruning
-        if ( d == 2 && !t.isCheck() && t.eval() + Table::DeepFutility <= alpha )
-            return alpha;
+    	if ( !any_valid_move )
+        	return draw;
 
-        vector<Move> next_move;
-        vector<Table> aux = t.next_move();
+    	return alpha;
+	} else {
+    	/// Deep Futility Pruning
+    	if ( d == 2 && !isCheck( t ) && eval( t ) + DeepFutility <= alpha )
+        	return alpha;
 
-        for ( int i = 0; i < aux.size(); i ++ ) {
-            Table &m = aux[i];
+    	vector<Table> next_moves;
+    	vector<Table> aux = next_move( t );
 
-            m.toggle();
-            if ( m.isCheck() )
-                continue;
-            m.toggle();
+    	for ( int i = 0; i < aux.size(); i ++ ) {
+        	Table &m = aux[i];
 
-            next_move.push_back( Move( -m.eval(), m ) );
-        }
+        	toggle( m );
+        	if ( isCheck( m ) )
+            	continue;
+        	toggle( m );
 
-        t.toggle();
-        if ( !next_move.size() )
-            return Table::draw;
-        t.toggle();
+        	next_moves.push_back( m );
+    	}
 
-        sort( next_move.begin(), next_move.begin() + next_move.size() );
+    	if ( !next_moves.size() )
+        	return draw;
 
-        for ( int i = 0; i < next_move.size(); i ++ ) {
-            Move &n = next_move[i];
-            Table &m = n.t;
+    	sort( next_moves.begin(), next_moves.end(), cmp_table );
 
-            alpha = max( alpha, -negamax( d - 1, m, -beta, -alpha ) );
-            if ( beta <= alpha )
-                return alpha;
-        }
+    	for ( int i = 0; i < next_moves.size(); i ++ ) {
+        	Table &m = next_moves[i];
 
-        return alpha;
-    }
+        	alpha = max( alpha, -negamax( d - 1, m, -beta, -alpha ) );
+        	if ( beta <= alpha )
+            	return alpha;
+    	}
+
+    	return alpha;
+	}
 }
 
 template <typename T>
-void print_table( Table &best, T &out )
+void print_table( Table& best, T& out )
 {
-    char dconv[8] = { '_', 'P', 'N', 'B', 'R', 'Q', 'K' };
-    for ( int x = 0; x < 8; x ++ ) {
-        for ( int y = 0; y < 8; y ++ ) {
-            int p = best.slot( x, y );
-            out << dconv[p / 2] << p%2 << ' ';
-        }
-        out << endl;
-    }
-    out << endl;
+	char dconv[8] = { '_', 'P', 'N', 'B', 'R', 'Q', 'K' };
+	for ( int x = 0; x < 8; x ++ ) {
+    	for ( int y = 0; y < 8; y ++ ) {
+        	int p = slot( best, x, y );
+        	out << dconv[p / 2] << p%2 << ' ';
+    	}
+    	out << endl;
+	}
+	out << endl;
 }
 
 int main()
 {
-    Table t;
+	Table t = new_table();
 
-    t.to_move = my_color;
+	t.to_move = my_color;
 
-    int conv[128];
-    conv['_'] = 0;
-    conv['P'] = Table::Pawn;
-    conv['N'] = Table::Knight;
-    conv['B'] = Table::Bishop;
-    conv['R'] = Table::Rook;
-    conv['Q'] = Table::Queen;
-    conv['K'] = Table::King;
+	int conv[128];
+	conv['_'] = 0;
+	conv['P'] = Pawn;
+	conv['N'] = Knight;
+	conv['B'] = Bishop;
+	conv['R'] = Rook;
+	conv['Q'] = Queen;
+	conv['K'] = King;
 
-    ifstream fin( "table.in" );
-    for ( int x = 0; x < 8; x ++ ) {
-        for ( int y = 0; y < 8; y ++ ) {
-            string str;
+	ifstream fin( "table.in" );
+	for ( int x = 0; x < 8; x ++ ) {
+    	for ( int y = 0; y < 8; y ++ ) {
+        	string str;
 
-            fin >> str;
+        	fin >> str;
 
-            t.push( conv[str[0]] * 2 + str[1] - '0', x, y );
+        	push( t, conv[str[0]] * 2 + str[1] - '0', x, y );
+    	}
+	}
+	fin.close();
+
+	Move best_move( 0, new_table() );
+
+    vector<Move> layer;
+    vector<Table> aux;
+
+	int d = 0;
+	while ( d < Depth ) {
+    	int alpha = -100000000;
+    	int beta = 100000000;
+
+        if ( d == 0 )
+            aux = next_move( t );
+        else {
+            aux.clear();
+            for ( int i = 0; i < layer.size(); i ++ )
+                aux.push_back( layer[i].t );
         }
-    }
-    fin.close();
+    	layer.clear();
 
-    Move best_move( 0, Table() );
+    	for ( int i = 0; i < aux.size(); i ++ ) {
+        	Table &m = aux[i];
 
-    int d = 0;
-    while ( d < Depth ) {
-        int alpha = -100000000;
-        int beta = 100000000;
+        	toggle( m );
+        	if ( isCheck( m ) )
+            	continue;
+        	toggle( m );
 
-        vector<Move> layer;
-        vector<Table> aux = t.next_move();
+        	int f = -negamax( d, m, -beta, -alpha );
+        	if ( f > alpha )
+            	alpha = f;
 
-        for ( int i = 0; i < aux.size(); i ++ ) {
-            Table &m = aux[i];
+        	layer.push_back( Move( f, m ) );
+    	}
 
-            m.toggle();
-            if ( m.isCheck() )
-                continue;
-            m.toggle();
+        sort( layer.begin(), layer.end() );
+    	best_move = layer[0];
 
-            int f = -negamax( d, m, -beta, -alpha );
-            if ( f > alpha )
-                alpha = f;
+    	cout << "Depth " << ++ d << " done in " << clock() / 1000.0 << " : " << best_move.score << endl;
+	}
 
-            layer.push_back( Move( f, m ) );
-        }
+	ofstream fout( "table.out" );
+	print_table( best_move.t, fout );
+	fout.close();
 
-        best_move = layer[0];
-        for ( int i = 1; i < layer.size(); i ++ )
-            if ( layer[i] < best_move )
-                best_move = layer[i];
-
-        cout << "Depth " << ++ d << " done in " << clock() / 1000.0 << " : " << best_move.score << endl;
-    }
-
-    ofstream fout( "table.out" );
-    print_table( best_move.t, fout );
-    fout.close();
-
-    return 0;
+	return 0;
 }
